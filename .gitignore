@@ -1,0 +1,7 @@
+.idea
+venv
+env
+*.jpg
+urls.txt
+/courses/courses/spiders/chromedriver/chromedriver
+/courses/json/scraped_data.json
