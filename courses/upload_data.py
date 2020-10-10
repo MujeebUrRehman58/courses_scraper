@@ -6,12 +6,14 @@ import requests
 
 import config
 
+session = requests.Session()
+
 
 def login():
     try:
         headers = {'Content-Type': 'application/json'}
         data = {"mail": config.MAIL, "password": config.PASSWORD}
-        res = requests.post(config.LOGIN_API, headers=headers, data=json.dumps(data))
+        res = session.post(config.LOGIN_API, headers=headers, data=json.dumps(data))
         if res.status_code == 200:
             return res.json()['token']
         else:
@@ -29,8 +31,8 @@ def upload_image(auth_token, image, image_name):
             "filename": image_name, "target_uri": f"public://{image_name}",
             "filemime": "image/jpeg", "file": image
         }
-        res = requests.post(config.IMAGE_API, headers=headers, data=json.dumps(data))
-        if res.status_code in [200, 201]:
+        res = session.post(config.IMAGE_API, headers=headers, data=json.dumps(data))
+        if res.status_code == 200:
             return res.json()['fid']
         else:
             print(f'Failure in uploading image {img_name}')
@@ -43,7 +45,7 @@ def upload_image(auth_token, image, image_name):
 def create_course(auth_token, data):
     try:
         headers = {'Content-Type': 'application/json', 'X-CSRF-Token': auth_token}
-        res = requests.post(config.COURSE_API, headers=headers, data=json.dumps(data))
+        res = session.post(config.COURSE_API, headers=headers, data=json.dumps(data))
         if res.status_code in [200, 201]:
             print(f'Successfully created course {res.json()}')
             return res.json()
