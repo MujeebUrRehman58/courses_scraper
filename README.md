@@ -1,4 +1,4 @@
-###Instructions to run this project:
+### Instructions to run this project:
 
 1.  Set these env vars (MAIL, PASSWORD, LOGIN_API, IMAGE_API, COURSE_API).
 2.  Create a python virtual environment (optional but recommended).
