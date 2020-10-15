@@ -9,7 +9,7 @@
 7.  Copy and paste driver file in /courses/courses/spiders/chromedriver/ folder.
 8.  Replace existing urls and categories data in /courses/courses/spiders/urls.csv with your desired urls and categories.
 9.  Open main.py file and replace 'json/scraped_data.json' with your json data file path
-10.  Run 'python main.py' to scrape data.
+10. CD to /courses and Run 'python main.py' to scrape data.
 11. After data is successfully scraped run 'python upload_data.py /full-path/to/your/json/data/file' to create courses.
 
 And you are done. 

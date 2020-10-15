@@ -53,6 +53,22 @@ def get_age_group(age):
         return 0
 
 
+def strf_course_date(obj):
+    return obj.strftime("%-d-%b-%Y")
+
+
+def extract_category(meta):
+    return [int(meta['category']), int(meta['sub'])]
+
+
+def safe_get_by_index(obj, index):
+    try:
+        val = '' if obj[index] in ['at', 'and'] else obj[index]
+    except:
+        val = ''
+    return val
+
+
 class CoursesSpider(scrapy.Spider):
     name = "courses_spider"
 
@@ -79,10 +95,10 @@ class CoursesSpider(scrapy.Spider):
         def make_address(obj):
             return dict(
                 postal_code=obj.get('postcode', '').strip(),
-                street=obj.get('line2', '').strip(),
+                street=obj.get('line1', obj.get('line2', '')).strip(),
                 city=obj.get('city', '').strip(),
-                venue=obj.get('line1', '').strip(),
-                country=obj.get('country', '').strip()
+                venue=obj.get('line2', 'some venue').strip(),
+                country="gb"
             ) if isinstance(obj, dict) else obj
 
         def make_products(dates, teacher):
@@ -94,14 +110,14 @@ class CoursesSpider(scrapy.Spider):
                     {
                         'timing': [{'value': start_date, 'value2': end_date}],
                         'discounted_price': d['price']/100,
-                        "initial_price": None,
-                        'start_date': start_date,
-                        'end_date': end_date,
-                        'sessions': d['duration']/60,
+                        "initial_price": d['price']/100,
+                        'start_date': strf_course_date(start_date),
+                        'end_date': strf_course_date(end_date),
+                        'sessions': 1,
                         'batch_size': d['totalAvailability'],
                         'tutor': teacher,
-                        'stock': d['totalAvailability'] - d['availability'],
-                        'trial_class': None,
+                        'stock': d['totalAvailability'],
+                        'trial_class': 0,
                         'status': 1
                     }
                 )
@@ -109,25 +125,35 @@ class CoursesSpider(scrapy.Spider):
 
         script = json.loads(response.css('#__NEXT_DATA__::text').extract_first())['props']['pageProps']['data']
         title = script['title']
-        category = [response.meta['category'], response.meta['sub']]
-        course_requirements = script['notes']
+        category = extract_category(response.meta)
+        course_requirements = script.get('notes', '')
         session = script['singleSession']
         description = session['description']
-        short_description = script['shortDescription']
+        short_description = script.get('shortDescription', title)
         tutor = response.css('.teacher-card__title-link::text').extract_first()
-        address = make_address(script['address'] or {})
+        address = make_address(script.get('address'))
+        session_type = 'online' if not address else 'offline'
         age = get_age_group(script['requirements'])
         products = make_products(session['dates'], tutor)
         image_urls = [i['url'] for i in script['galleryImages']]
         yield CourseItem(
-            extracted_from='obby', title=title, category=category, youtube=[],
-            money_back_guarantee=1, course_requirements=course_requirements,
+            extracted_from='obby', session_type=session_type, title=title, category=category,
+            youtube=[], money_back_guarantee=0, course_requirements=course_requirements,
             certification=[], address=address, images_fids=[], description=description,
             short_description=short_description, cancellation=cancellation,
             suitable_for=suitable_for, amenities=[], age=age, products=products, image_urls=image_urls
         )
 
     def parse_craft(self, response):
+        def make_address(_address):
+            return dict(
+                postal_code=_address[-1].strip(),
+                street=_address[1].strip(),
+                city=_address[-2].strip(),
+                venue=_address[0].strip(),
+                country="gb"
+            ) if _address else _address
+
         def make_age(course_checklist):
             checklist = ['children', 'teenagers', 'adults']
             for i in course_checklist:
@@ -136,7 +162,7 @@ class CoursesSpider(scrapy.Spider):
                     return i
             return None
 
-        def make_products(teacher, _price, sessions):
+        def make_products(teacher, _price):
             driver = webdriver.Chrome(f'{pathlib.Path(__file__).parent.absolute()}/chromedriver/chromedriver',
                                       chrome_options=chrome_options)
             driver.set_window_size(1804, 1096)
@@ -152,18 +178,19 @@ class CoursesSpider(scrapy.Spider):
                         date = e.get_attribute('aria-label')
                         if date and date not in dates:
                             dates.append(date)
+                            date = dt.strptime(date, '%A, %B %d, %Y')
                             _products.append(
                                 {
                                     'timing': [{'value': date, 'value2': date}],
                                     'discounted_price': price,
-                                    "initial_price": None,
-                                    'start_date': date,
-                                    'end_date': date,
-                                    'sessions': sessions,
-                                    'batch_size': None,
+                                    "initial_price": price,
+                                    'start_date': strf_course_date(date),
+                                    'end_date': strf_course_date(date),
+                                    'sessions': 1,
+                                    'batch_size': 5,
                                     'tutor': teacher,
-                                    'stock': None,
-                                    'trial_class': None,
+                                    'stock': 5,
+                                    'trial_class': 0,
                                     'status': 1
                                 }
                             )
@@ -174,25 +201,23 @@ class CoursesSpider(scrapy.Spider):
             return _products
 
         title = unidecode(response.css('.course-title::text').extract_first())
-        category = [response.meta['category'], response.meta['sub']]
-        tutor_and_venue = ''.join(response.css('.course-description .read-more::text').extract()).strip()
+        category = extract_category(response.meta)
+        tutor = ''.join(response.css('.course-description .read-more::text').extract()).strip().split(' ')
+        tutor = (safe_get_by_index(tutor, 0) + ' ' + safe_get_by_index(tutor, 1)).strip()
         description = unidecode(''.join(response.css('.course-description .read-more p::text').extract()).strip())
-        short_description = ''
         price_row = response.css('.price::text').extract()
         price = int(re.findall(r'\d+', price_row[0])[0])
-        duration = price_row[1] if len(price_row) > 1 else None
-        address = {'street': unidecode(' '.join(response.css('address::text').extract())), 'venue': tutor_and_venue}
-        course_requirements = ''
-        amenities = [a.strip() for a in response.xpath("//h2[contains(text(), "
-                     "'included in the price?')]""/following-sibling::p/text()").extract()]
+        address = make_address(response.css('address::text').extract())
+        session_type = 'online' if not address else 'offline'
         age = get_age_group(make_age(response.css('.course-checklists li::text').extract()))
-        products = make_products(tutor_and_venue, price, duration)
-        image_urls = response.css('.course-slideshow a::attr(data-href)').extract()
+        products = make_products(tutor, price)
+        image_urls = response.css('.course-slideshow a::attr(data-href)').extract() or [response.css(
+            '.row .text-center img::attr(data-src)').extract_first()]
         yield CourseItem(
-            extracted_from='craft-courses', title=title, category=category, youtube=[],
-            money_back_guarantee=0, course_requirements=course_requirements,
+            extracted_from='craft-courses', title=title, session_type=session_type,
+            category=category, youtube=[], money_back_guarantee=0, course_requirements='',
             certification=[], address=address, images_fids=[], description=description,
-            short_description=short_description, cancellation=cancellation, amenities=amenities,
+            short_description=title, cancellation=cancellation, amenities=[],
             suitable_for=suitable_for, age=age, products=products, image_urls=image_urls
         )
 

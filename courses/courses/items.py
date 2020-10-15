@@ -9,6 +9,7 @@ import scrapy
 class CourseItem(scrapy.Item):
     extracted_from = scrapy.Field()
     title = scrapy.Field()
+    session_type = scrapy.Field()
     category = scrapy.Field()
     youtube = scrapy.Field()
     money_back_guarantee = scrapy.Field()

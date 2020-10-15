@@ -46,7 +46,7 @@ def create_course(auth_token, data):
     try:
         headers = {'Content-Type': 'application/json', 'X-CSRF-Token': auth_token}
         res = session.post(config.COURSE_API, headers=headers, data=json.dumps(data))
-        if res.status_code in [200, 201]:
+        if res.status_code == 200:
             print(f'Successfully created course {res.json()}')
             return res.json()
         else:
