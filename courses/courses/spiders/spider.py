@@ -6,35 +6,26 @@ from datetime import datetime as dt
 from datetime import timedelta
 import re
 import csv
+import requests
+from time import sleep
 
 import scrapy
-from ..items import CourseItem
+from bs4 import BeautifulSoup as BS
 from unidecode import unidecode
-from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException
-from selenium.webdriver.chrome.options import Options
 
+from ..items import CourseItem
+
+user_agent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.105 Safari/537.36'
+session = requests.session()
+session.headers = {'User-Agent': user_agent}
 OBBY_NETLOC = 'obby.co.uk'
 CRAFT_NETLOC = 'www.craftcourses.com'
 cancellation = 'Rigid'
 suitable_for = 'Both'
-chrome_options = Options()
-chrome_options.add_argument("--headless")
 
 
 def is_url_valid(parsed_url):
     return all([parsed_url.scheme, parsed_url.netloc, parsed_url.path])
-
-
-def wait_for_element_by_css(driver, path):
-    element = None
-    while True:
-        try:
-            element = driver.find_element_by_css_selector(path)
-            break
-        except NoSuchElementException:
-            continue
-    return element
 
 
 def get_age_group(age):
@@ -69,6 +60,20 @@ def safe_get_by_index(obj, index):
     return val
 
 
+def safe_get_request(url):
+    res = None
+    try:
+        res = session.get(url, timeout=(15, 60))
+    except Exception:
+        print(f'Could not get {url}\nRetrying with delay now.')
+        try:
+            sleep(5)
+            res = session.get(url)
+        except:
+            print(f'Retry with delay failed as well for {url}. Skipping..')
+    return res
+
+
 class CoursesSpider(scrapy.Spider):
     name = "courses_spider"
 
@@ -89,7 +94,8 @@ class CoursesSpider(scrapy.Spider):
             parsed_url = urlparse(url[0])
             if is_url_valid(parsed_url) and self.map_call_back.get(parsed_url.netloc):
                 yield scrapy.Request(url=url[0], callback=self.map_call_back[parsed_url.netloc],
-                                     errback=self.err_back, meta={'url': url[0], 'category': url[1], 'sub': url[2]})
+                                     errback=self.err_back, meta={'category': url[1], 'sub': url[2],
+                                                                  'owner': safe_get_by_index(url, 3)})
 
     def parse_obby(self, response):
         def make_address(obj):
@@ -126,6 +132,8 @@ class CoursesSpider(scrapy.Spider):
         script = json.loads(response.css('#__NEXT_DATA__::text').extract_first())['props']['pageProps']['data']
         title = script['title']
         category = extract_category(response.meta)
+        owner = response.meta['owner']
+        title = f'{title} - {owner}' if owner else title
         course_requirements = script.get('notes', '')
         session = script['singleSession']
         description = session['description']
@@ -162,46 +170,36 @@ class CoursesSpider(scrapy.Spider):
                     return i
             return None
 
-        def make_products(teacher, _price):
-            driver = webdriver.Chrome(f'{pathlib.Path(__file__).parent.absolute()}/chromedriver/chromedriver',
-                                      chrome_options=chrome_options)
-            driver.set_window_size(1804, 1096)
-            driver.get(response.meta['url'])
-            css = '.vc-h-full span:not(.vc-text-gray-400)'
-            wait_for_element_by_css(driver, css)
-            dates = []
+        def parse_craft_dates(url, teacher, price):
+            res = safe_get_request(url)
+            if not response:
+                return []
             _products = []
-            next_btn = driver.find_elements_by_css_selector('div.vc-arrows-container .vc-flex')[1]
-            for i in range(2):
-                for e in driver.find_elements_by_css_selector(css) or []:
-                    try:
-                        date = e.get_attribute('aria-label')
-                        if date and date not in dates:
-                            dates.append(date)
-                            date = dt.strptime(date, '%A, %B %d, %Y')
-                            _products.append(
-                                {
-                                    'timing': [{'value': date, 'value2': date}],
-                                    'discounted_price': price,
-                                    "initial_price": price,
-                                    'start_date': strf_course_date(date),
-                                    'end_date': strf_course_date(date),
-                                    'sessions': 1,
-                                    'batch_size': 5,
-                                    'tutor': teacher,
-                                    'stock': 5,
-                                    'trial_class': 0,
-                                    'status': 1
-                                }
-                            )
-                    except Exception as e:
-                        continue
-                next_btn.click()
-            driver.close()
+            res = BS(res.content, 'html.parser')
+            dates = res.select('#course-list .course-card')[:90]
+            for date in dates:
+                date = dt.strptime(str(date.find(text=True, recursive=False)).strip(), '%d %B %Y')
+                _products.append(
+                    {
+                        'timing': [{'value': date, 'value2': date}],
+                        'discounted_price': price,
+                        "initial_price": price,
+                        'start_date': strf_course_date(date),
+                        'end_date': strf_course_date(date),
+                        'sessions': 1,
+                        'batch_size': 5,
+                        'tutor': teacher,
+                        'stock': 5,
+                        'trial_class': 0,
+                        'status': 1
+                    }
+                )
             return _products
 
         title = unidecode(response.css('.course-title::text').extract_first())
         category = extract_category(response.meta)
+        owner = response.meta['owner']
+        title = f'{title} - {owner}' if owner else title
         tutor = ''.join(response.css('.course-description .read-more::text').extract()).strip().split(' ')
         tutor = (safe_get_by_index(tutor, 0) + ' ' + safe_get_by_index(tutor, 1)).strip()
         description = unidecode(''.join(response.css('.course-description .read-more p::text').extract()).strip())
@@ -210,7 +208,8 @@ class CoursesSpider(scrapy.Spider):
         address = make_address(response.css('address::text').extract())
         session_type = 'online' if not address else 'offline'
         age = get_age_group(make_age(response.css('.course-checklists li::text').extract()))
-        products = make_products(tutor, price)
+        dates_url = response.css('.course-side-bar .btn.btn-primary.btn-block::attr(href)').extract_first()
+        products = parse_craft_dates(dates_url, tutor, price)
         image_urls = response.css('.course-slideshow a::attr(data-href)').extract() or [response.css(
             '.row .text-center img::attr(data-src)').extract_first()]
         yield CourseItem(
