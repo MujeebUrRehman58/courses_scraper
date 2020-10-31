@@ -112,20 +112,21 @@ class CoursesSpider(scrapy.Spider):
 
         def make_products(dates, teacher):
             _products = []
+            dates = dates if dates else [{'startDateTime': '2020-11-27T18:30:00.000Z'}]
             for d in dates:
                 start_date = dt.strptime(d['startDateTime'], '%Y-%m-%dT%H:%M:%S.%fZ')
-                end_date = start_date + timedelta(minutes=d['duration'])
+                end_date = start_date + timedelta(minutes=d.get('duration', 360))
                 _products.append(
                     {
                         'timing': [{'value': start_date, 'value2': end_date}],
-                        'discounted_price': d['price']/100,
-                        "initial_price": d['price']/100,
+                        'discounted_price': d.get('price', 5000)/100,
+                        "initial_price": d.get('price', 5000)/100,
                         'start_date': strf_course_date(start_date),
                         'end_date': strf_course_date(end_date),
                         'sessions': 1,
-                        'batch_size': d['totalAvailability'],
+                        'batch_size': d.get('totalAvailability', 5),
                         'tutor': teacher,
-                        'stock': d['totalAvailability'],
+                        'stock': d.get('totalAvailability', 5),
                         'trial_class': 0,
                         'status': 1
                     }
@@ -175,6 +176,7 @@ class CoursesSpider(scrapy.Spider):
 
         def parse_craft_dates(url, teacher, price):
             res = None
+            date_format = '%d %B %Y'
             if url:
                 res = safe_get_request(url)
             _products = []
@@ -184,9 +186,10 @@ class CoursesSpider(scrapy.Spider):
                          res.select('#course-list .course-card')[:90]]
             else:
                 date = response.css('.next-date::text').extract_first()
-                dates = [date_parser(date).strftime('%d %B %Y')] if date else []
+                dates = [date_parser(date).strftime(date_format)] if date else []
+            dates = dates if dates else [dt.now().strftime(date_format)]
             for date in dates:
-                date = dt.strptime(date, '%d %B %Y')
+                date = dt.strptime(date, date_format)
                 _products.append(
                     {
                         'timing': [{'value': date, 'value2': date}],
