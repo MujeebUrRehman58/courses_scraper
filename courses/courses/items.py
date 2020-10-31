@@ -23,6 +23,8 @@ class CourseItem(scrapy.Item):
     suitable_for = scrapy.Field()
     amenities = scrapy.Field()
     age = scrapy.Field()
+    offer_valid_from = scrapy.Field()
+    offer_valid_untill = scrapy.Field()
     products = scrapy.Field()
     image_urls = scrapy.Field()
     images = scrapy.Field()

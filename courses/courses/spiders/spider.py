@@ -23,6 +23,8 @@ OBBY_NETLOC = 'obby.co.uk'
 CRAFT_NETLOC = 'www.craftcourses.com'
 cancellation = 'Rigid'
 suitable_for = 'Both'
+offer_valid_from = '6-Jun-2020 16:30'
+offer_valid_untill = '21-Aug-2021 17:30'
 
 
 def is_url_valid(parsed_url):
@@ -146,11 +148,11 @@ class CoursesSpider(scrapy.Spider):
         products = make_products(session['dates'], tutor)
         image_urls = [i['url'] for i in script['galleryImages']]
         yield CourseItem(
-            extracted_from='obby', session_type=session_type, title=title, category=category,
-            youtube=[], money_back_guarantee=0, course_requirements=course_requirements,
-            certification=[], address=address, images_fids=[], description=description,
-            short_description=short_description, cancellation=cancellation,
-            suitable_for=suitable_for, amenities=[], age=age, products=products, image_urls=image_urls
+            extracted_from='obby', session_type=session_type, title=title, category=category, youtube=[],
+            money_back_guarantee=0, course_requirements=course_requirements, certification=[], address=address,
+            images_fids=[], description=description, short_description=short_description, cancellation=cancellation,
+            suitable_for=suitable_for, amenities=[], age=age, offer_valid_from=offer_valid_from,
+            offer_valid_untill=offer_valid_untill, products=products, image_urls=image_urls
         )
 
     def parse_craft(self, response):
@@ -219,11 +221,11 @@ class CoursesSpider(scrapy.Spider):
         image_urls = response.css('.course-slideshow a::attr(data-href)').extract() or [response.css(
             '.row .text-center img::attr(data-src)').extract_first()]
         yield CourseItem(
-            extracted_from='craft-courses', title=title, session_type=session_type,
-            category=category, youtube=[], money_back_guarantee=0, course_requirements='',
-            certification=[], address=address, images_fids=[], description=description,
-            short_description=title, cancellation=cancellation, amenities=[],
-            suitable_for=suitable_for, age=age, products=products, image_urls=image_urls
+            extracted_from='craft-courses', title=title, session_type=session_type, category=category, youtube=[],
+            money_back_guarantee=0, course_requirements='', certification=[], address=address, images_fids=[],
+            description=description, short_description=title, cancellation=cancellation, amenities=[],
+            suitable_for=suitable_for, age=age, offer_valid_from=offer_valid_from,
+            offer_valid_untill=offer_valid_untill, products=products, image_urls=image_urls
         )
 
     def err_back(self, response):
