@@ -12,6 +12,7 @@ from time import sleep
 import scrapy
 from bs4 import BeautifulSoup as BS
 from unidecode import unidecode
+from dateutil.parser import parse as date_parser
 
 from ..items import CourseItem
 
@@ -171,14 +172,19 @@ class CoursesSpider(scrapy.Spider):
             return None
 
         def parse_craft_dates(url, teacher, price):
-            res = safe_get_request(url)
-            if not response:
-                return []
+            res = None
+            if url:
+                res = safe_get_request(url)
             _products = []
-            res = BS(res.content, 'html.parser')
-            dates = res.select('#course-list .course-card')[:90]
+            if res:
+                res = BS(res.content, 'html.parser')
+                dates = [str(d.find(text=True, recursive=False)).strip() for d in
+                         res.select('#course-list .course-card')[:90]]
+            else:
+                date = response.css('.next-date::text').extract_first()
+                dates = [date_parser(date).strftime('%d %B %Y')] if date else []
             for date in dates:
-                date = dt.strptime(str(date.find(text=True, recursive=False)).strip(), '%d %B %Y')
+                date = dt.strptime(date, '%d %B %Y')
                 _products.append(
                     {
                         'timing': [{'value': date, 'value2': date}],
